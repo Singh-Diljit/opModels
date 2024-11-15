@@ -1,254 +1,162 @@
 """Implement Index class."""
 
 import numpy as np
-import os
-import sys 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-import helperFunctions.helperFunctions as hf
+import sys
+sys.path.append('../')
+from helperFuncs import formatting, showData
 
 class Index:
     """Implement an indexing set, used in indexing stochastic processess."""
 
-    def __init__(self, I, continuous=True, discrete=False):
+    def __init__(self, start=0, end=np.inf, discreteSet=None):
         """Initialize an indexing set.
 
         Parameters
         ----------
-        I         : float, array_like: If array_like given in ascending order.
-        continous : bool,  optional  : If 'arr' represents continous set.
-        discrete  : bool,  optional  : If 'arr' represents discrete set.
+        start       : float      : Start of cont. indexing range.
+        end         : float      : End of cont. indexing range.
+        discreteSet : array_like : Discrete indexing set.
 
         Initializes
         -----------
-        self.I         : array : Indexing set.
-        self.continous : bool  : Index is continous. 
-        self.discrete  : bool  : Index is a discrete set.
-        
-        Notes
-        -----
-        A continous indexing set is defined by:
-            I=X, discrete=False, continous=True
-        Where X is either a float, array_like of length 1 or 2 with X[0] a
-        minimal element of I.
-
-        Need for 'discrete' and 'continous' paramaters are only needed for len 1
-        and len 2 array_like inputs where the index set can just be a one or
-        two point discerete set.
+        self.I          : array : Indexing set.
+        self.isDiscrete : bool  : If index is a discrete set.
 
         """
-        I_ = hf.makeArray(I)
-        if len(I_) == 1:
-            self.I = np.append(I_, np.inf)
+        self.isDiscrete = discreteSet is not None
+        if self.isDiscrete:
+            self.I = formatting.makeArray(discreteSet)
         else:
-            self.I = I_
-        self.continuous = (len(self.I) == 2 and not discrete)
-        self.discrete = not self.continuous
-
-    @property
-    def type(self):
-        """Return, as a string, if X is continous or discete."""
-        return 'continuous' if self.continuous else 'discrete'
+            self.I = np.array([start, end])
 
     @property
     def start(self):
-        """Return minimum element in indexing set."""
         return self.I[0]
 
     @property
     def end(self):
-        """Return maximum element in indexing set."""
-        return self.I[1]
+        return self.I[-1]
 
     @property
     def range(self):
-        """Return the start and end of the indexing set."""
-        return np.array([self.start, self.end])
-
-    @property
-    def size(self):
-        """Return the size of the indexing set.
-
-        Notes
-        -----
-        This function returns the number of elements in self.I if self.discrete;
-        otherwise, this function returns the length of the indexing interval.
-
-        """
-        return self.end - self.start if self.continuous else len(self.I)
-
-    def membership(self, toCheck):
-        """Return if the input is a subset of the indexing set.
-
-        Parameters
-        ----------
-        toCheck: float, array_like: If array_like given in ascending order.
-
-        Returns
-        -------
-        res: bool: If toCheck is a subset of self.I.
-
-        """
-        if type(toCheck) in {int, float} and self.continuous:
-            res = self.start <= toCheck <= self.end
-
-        elif type(toCheck) in {int, float} and self.discrete:
-            res = toCheck in self.I
-
-        elif len(toCheck) == 1:
-            res = self.membership(toCheck[0])
-
-        elif self.continuous:        
-            mnCands, mxCands = toCheck[0], toCheck[-1]
-            res = (self.start <= mnCands) and (self.end >= mxCands)
-        
-        else:
-            res = set(toCheck).issubset(set(self.I))
-
-        return res
-
-    def intersection_(self, S):
-        """Return the intersection of two indexing sets.
-
-        Parameters
-        ----------
-        S : Index : Indexing set.
-
-        Returns
-        -------
-        res : tuple : Data for Index.__init__.
-
-        """
-        disc_ = (self.discrete or S.discrete)
-        cont_ = not disc_
-        if cont_:
-            mn = min(self.start, S.start)
-            mx = max(self.end, S.end)
-            inter = np.array([mn, mx])
-            
-        elif self.discrete and S.discrete:
-            S_ = set(S.I)
-            inter = np.array(sorted([x for x in self.I if x in S_]))
-
-        else:
-            mn, mx = self.range if self.continuous else S.range
-            cands = self.I if self.discrete else S.I
-            mnI, mxI = np.searchsorted(cands, [mn, mx], side='left')#
-            inter = cands[mnI:mxI]
-                
-        return inter, cont_, disc_
+        """Return max(Index) - min(Index)."""
+        return self.end - self.start
     
-    def intersect(self, S):
-        """Change self to the intersection of two indexing sets.
+    def makeDiscrete(self, steps=100):
+        """If set is cont. return evenly spaces points in the index."""
+        if self.isDiscrete:
+            disc_ = self.I
+            increments = np.ediff1d(self.I)
+        else:
+            disc_, increments = np.linspace(self.start, self.end,
+                                            steps, retstep=True)
+        return disc_, increments
 
-        Parameters
-        ----------
-        S : Index : Indexing set.
-
-        Initializes
-        -----------
-        self.I         : array : Indexing set.
-        self.continous : bool  : Index is continous. 
-        self.discrete  : bool  : Index is a discrete set.
-
-        """
-        inter, cont_, disc_ = self.intersection_(S)
-        self.I, self.continuous, self.discrete = inter, cont_, disc_
-            
-    def intersection(self, S):
-        """Return the intersection of two indexing sets.
-
-        Parameters
-        ----------
-        S : Index : Indexing set.
-
-        Returns
-        -------
-        res : Index : Indexing set.
-
-        """
-        inter, cont_, disc_ = self.intersection_(S)
-        res = Index(inter, cont_, disc_)
+    @property
+    def makeSelf(self):
+        if self.isDiscrete:
+            res = Index(discreteSet = self.I)
+        else:
+            res = Index(start=self.start, end=self.end)
         return res
 
-    def extention_(self, S):
-        """Return the extension of two indexing sets.
+    def __bool__(self):
+        return (self.I.size > 0)
 
-        Parameters
-        ----------
-        S : Index : Indexing set, with S.type == self.type.
+    @property
+    def empty(self):
+        return Index(discreteSet=[])
+    
+    @property
+    def numEls(self):
+        return len(self.I) if self.isDiscrete else np.inf
 
-        Returns
-        -------
-        res : array : New indexing set.
-
-        Notes
-        -----
-        If extending two continous intervals they are assumed to overlap.
-
-        """
-        if self.continuous:
-            inter = np.array([min(S.start, self.start), max(S.end, self.end)])
+    def boundBelow(self, newStart=None):
+        """Exclude values below newStart."""
+        if self.__bool__ == False:
+            print('cat')
+            return self.empty
+        
+        if newStart is None or newStart <= self.start:
+            res = self.makeSelf
+            
+        elif newStart > self.end:
+            res = self.empty
+        
+        elif self.isDiscrete:
+            start_ = 0
+            for i, x in enumerate(self.I):
+                if x >= newStart:
+                    start_ = i; break
+                    
+            res = Index(discreteSet = self.I[start_:])
 
         else:
-            inter = np.sort(np.unique(list(self.I) + list(S.I)))
+            start_ = max(self.start, newStart)
+            res = Index(start_, self.end)
+
+        return res
+
+    def boundAbove(self, newEnd=None):
+        """Exclude values above newEnd."""
+        if self.__bool__ == False:
+            return self.empty
             
-        return inter
+        if newEnd is None or newEnd >= self.end:
+            res = self.makeSelf
+            
+        elif newEnd < self.start:
+            res = self.empty
         
-    def extend(self, S):
-        """Change index to extension of itself with another indexing set.
+        elif self.isDiscrete:
+            newSet = list(self.I)
+            while newSet[-1] > newEnd:
+                newSet.pop()
+            res = Index(discreteSet = newSet)
 
-        Parameters
-        ----------
-        S : Index: Indexing set with S.type == self.type
+        else:
+            end_ = min(self.end, newEnd)
+            res = Index(self.start, end_)
 
-        Initializes
-        -----------
-        self.I : array : Indexing set.
+        return res
 
-        Notes
-        -----
-        If extending two continous intervals they are assumed to overlap.
-
-        """
-        self.inter = self.extention_(S)
-
-    def extention(self, S):
-        """Return the extension of two indexing sets.
-
-        Parameters
-        ----------
-        S : Index : Indexing set, with S.type == self.type.
-
-        Returns
-        -------
-        res : Index : Extended index.
-
-        """
-        inter = self.extension_(S)
-        res = Index(inter, self.discrete, self.continuous)
+    def restrict(self, newStart=None, newEnd=None):
+        """Exclude values below newStart and above newEnd."""
+        res = self.boundAbove(newEnd)
+        if bool(res) == False:
+            res = self.empty
+        else:
+            res = res.boundBelow(newStart)
         return res
 
     @property
-    def initDict(self):
-        """Dictionary of labled inputs for __init__ to this instance."""
-
-        className = 'Index'
-        initOrder = ['I', 'continuous', 'discrete']
-        repData = {
-            'I'         : self.I,
-            'continuous' : self.continuous,
-            'discrete'  : self.discrete}
+    def initData(self):
+        """Labled inputs to __init__ to this instance."""
         
-        return className, repData, initOrder
+        className = 'Index'
+        if self.isDiscrete:
+            initData_ = [
+                ('discreteSet', self.I)
+                ]
+        else:
+            initData_ = [
+                ('start', self.I[0]),
+                ('end',   self.I[1])
+                ]
+            
+        return className, initData_
 
     def __repr__(self):
-        """Representation of the class instance."""
-
-        className, repData, order = self.initDict
-        rep = ', '.join([f'{x}: {repData[x]}' for x in order])
-        
-        return f'{className}({rep})'
+        """Return repr(self)."""
+        return showData.makeRepr(self.initData)
 
     def __str__(self):
-        """Return str(self)"""
-        return f'{self.type} index: {self.I}'
+        """Return str(self)."""
+        return str(self.I)
+
+"""
+a = Index(discreteSet = [1, 2, 3, 5, 6, 7])
+b = a.restrict(-7, -5)
+print(b)
+#print(a.makeDiscrete(steps=10))
+"""
