@@ -3,68 +3,66 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from Index.Index import *
-
 class BrownianMotion:
-    """Implement X = {c_1*t + c_2*B_t} with index set: [0, np.inf]."""
+    """Implement X = {c_1*t + c_2*B_t} with index set: [start, end]."""
 
-    def __init__(self, drift=0, mag=1, index=None):
-        """Initialize BrownianMotion paramaters.
-
-        Paramaters
-        ----------
-        drift : float : Drift componenet of the stochastic process.
-        mag   : float : Scale of standard Brownian motion.
-
-        Initializes
-        -----------
-        self.drift : float : Drift componenet of the stochastic process.
-        self.mag   : float : Scale of standard Brownian motion.
-
-        """
+    def __init__(self, drift=0, mag=1, start=0, end=1):
+        """Initialize BrownianMotion paramaters."""
         self.drift = drift
         self.mag = mag
-        self.index = Index(0) if index is None else index
+        self.index = [start, end]
 
     def __repr__(self):
         """Return repr(self)."""
         repData = f'drift={self.drift}, mag={self.mag}, index={repr(self.index)}'
         return f'BrownianMotion({repData})'
     
-    def sample(self, sims, idx, scale=1):
+    def sample(self, sims, idx, shape=None):
         """Sample X_t.
 
         Paramaters
         ----------
         sims  : int   : # of simulations drawn at each point in time.
         idx   : float : Provides instance of SP being sampled.
-        scale : float : End scaling of samples.
 
         Returns
         -------
-        res : ndarray : Array with 'sims' number of samples. Shape = (sims,)
+        res : ndarray : Array with 'sims' number of samples.
         
         """
-        realizeNorm = np.random.normal(scale=np.sqrt(idx), size=sims)
-        res = self.drift*idx + self.mag*realizeNorm
-        return scale*res
+        if shape is None:
+            shape = sims
+        noise = np.random.normal(loc=0.0, scale=np.sqrt(idx), size=shape)
+        det = 0 if self.drift==0 else self.drift*idx
+        return det + self.mag*noise
 
-    def sampleIndex(self, sims, scale=1):
-        if self.index.continuous:
-            sampVals = np.linspace(self.index.start, self.index.end, 1000)
-            vals = [np.mean(self.sample(sims, x, scale)) for x in sampVals]
+    def graph(self, numPaths=1, steps=100):
+        """Plot multiple sample paths of the stochastic process."""
+        plt.figure(figsize=(10, 6))
+        indexSet = np.linspace(self.index[0], self.index[1], steps)
+        paths = np.zeros((numPaths, len(indexSet)))
 
-        else:
-            vals = [np.mean(self.sample(sims, x, scale)) for x in self.index.I]
-
-        return vals
-            
-    def graph(self, sims, idx=None, scale=1):
-        if idx is None:
-            plt.plot(self.sampleIndex(sims, scale))
-        else:
-            plt.plot(self.sample(sims, idx, scale))
+        # Generate samples for each time point
+        for i, t in enumerate(indexSet):
+            samples = self.sample(sims=numPaths, idx=t)
+            paths[:, i] = samples
+        
+        # Plot each path
+        for pathidx in range(numPaths):
+            plt.plot(indexSet, paths[pathidx, :],
+                     label=f"Sample Path {pathidx + 1}")
+        
+        # Add labels and legend
+        plt.title(f"Sample Paths of {self.__class__.__name__}")
+        plt.xlabel("Index (t)")
+        plt.ylabel("Value")
+        plt.legend()
+        plt.grid()
         plt.show()
+
+if __name__ == "__main__":
+    # Create a BrownianMotion instance
+    bm = BrownianMotion(drift=0.1, mag=0.2)
+    print(bm != 0)
+    # Generate and graph sample paths
+    #bm.graph(numPaths=5)

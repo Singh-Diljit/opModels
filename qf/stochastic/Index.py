@@ -41,6 +41,11 @@ class Index:
     def range(self):
         """Return max(Index) - min(Index)."""
         return self.end - self.start
+
+    @property
+    def interval(self):
+        """Return [start, end]."""
+        return np.array([self.start,self.end]) if self.isDiscrete else self.I
     
     def makeDiscrete(self, steps=100):
         """If set is cont. return evenly spaces points in the index."""
@@ -154,9 +159,8 @@ class Index:
         """Return str(self)."""
         return str(self.I)
 
-"""
+
 a = Index(discreteSet = [1, 2, 3, 5, 6, 7])
 b = a.restrict(-7, -5)
-print(b)
-#print(a.makeDiscrete(steps=10))
-"""
+print(a.makeDiscrete(steps=10))
+

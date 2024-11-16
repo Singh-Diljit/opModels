@@ -1,28 +1,15 @@
 """Implement Brownian Motion with drift + coumpound Poisson (lognormal jumps)."""
 
 import numpy as np
-from BrownianMotion import BrownianMotion
-from CompoundPoisson import CompoundPoisson
-
 import matplotlib.pyplot as plt
-
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from Index.Index import *
+from BrownianMotion import *
+from CompoundPoisson import *
 
 class JumpDiffusion:
-    """Implement X = {c_1*t + c_2*B_t + c_3*J_t} with index set: [0, T].
+    """Implement X = {c_1*t + c_2*B_t + c_3*J_t} with index set: [0, T]."""
 
-    Notes
-    -----
-    B_t - Standard Brownian motion
-    J_t - coumpound Poisson (lognormal jumps)
-    B_t and J_t are assumed to be independant
-    
-    """
-
-    def __init__(self, BM, JP):
+    def __init__(self, magBM, lam, logNormMean=0, logNormDev=1,
+                 drift=0, magJP=1, start=0, end=1):
         """Initialize JumpDiffusion paramaters.
 
         Paramaters
@@ -31,11 +18,13 @@ class JumpDiffusion:
         JP : CoumpoundPoisson : Length  of time the rate is given in.
 
         """
-        self.BM = BM
-        self.JP = JP
-        self.index = BM.index.intersection(JP.index)
+        self.drift = drift
+        self.BM = BrownianMotion(mag=magBM, start=start, end=end)
+        self.JP = CompoundPoisson(lam, logNormMean, logNormDev,
+                                  mag=magJP, start=0, end=1)
+        self.index = [start, end]
 
-    def sample(self, sims, idx, scale=1):
+    def sample(self, sims, idx, shape=None):
         """Sample X_t.
 
         Paramaters
@@ -49,30 +38,36 @@ class JumpDiffusion:
         res : ndarray : Array with 'sims' number of samples.
         
         """
-        return scale*self.BM.sample(sims, idx) + scale*self.JP.sample(sims, idx) 
+        if shape is None:
+            shape = sims
+        noise = self.BM.sample(sims, idx, shape)
+        jumps = self.JP.sample(sims, idx, shape)
+        return self.drift*idx + noise + jumps
         
-    def sampleIndex(self, sims, scale=1):
-        if self.index.continuous:
-            sampVals = np.linspace(self.index.start,
-                               min(max(100, self.index.start), self.index.end),
-                               100)
-            vals = [np.mean(self.sample(sims, x, scale)) for x in sampVals]
+    def graph(self, numPaths=1, steps=100):
+        """Plot multiple sample paths of the stochastic process."""
+        plt.figure(figsize=(10, 6))
+        indexSet = np.linspace(self.index[0], self.index[1], steps)
+        paths = np.zeros((numPaths, len(indexSet)))
 
-        else:
-            vals = [np.mean(self.sample(sims, x, scale)) for x in self.index.I]
-
-        return vals
-            
-    def graph(self, sims, idx=None, scale=1):
-        if idx is None:
-            plt.plot(self.sampleIndex(sims, scale))
-        else:
-            plt.plot(self.sample(sims, idx, scale))
+        # Generate samples for each time point
+        for i, t in enumerate(indexSet):
+            samples = self.sample(sims=numPaths, idx=t)
+            paths[:, i] = samples
+        
+        # Plot each path
+        for pathidx in range(numPaths):
+            plt.plot(indexSet, paths[pathidx, :],
+                     label=f"Sample Path {pathidx + 1}")
+        
+        # Add labels and legend
+        plt.title(f"Sample Paths of {self.__class__.__name__}")
+        plt.xlabel("Index (t)")
+        plt.ylabel("Value")
+        plt.legend()
+        plt.grid()
         plt.show()
 
-I = Index(0, 1)
-BM = BrownianMotion(0, 1, I)
-BM.graph(sims=1000)
-
-gBM = Geometric(BM)
-gBM.graph(sims=1000)
+if __name__ == "__main__":
+    jd = JumpDiffusion(drift=.1, magBM=.2, lam=.5)
+    jd.graph(numPaths=5)

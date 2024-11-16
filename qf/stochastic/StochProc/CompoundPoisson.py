@@ -3,98 +3,82 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-from Index.Index import *
-
 class CompoundPoisson:
-    """Implement X = {c*J_t} with index set: [0, np.inf]."""
+    """Implement X = {drift*t + mag*Y_t} with index set: [0, np.inf]."""
 
-    def __init__(self, rate, rateInter=1, logNormMean=0, logNormDev=1, mag=1,
-                 index=None):
-        """Initialize CompoundPoisson paramaters.
-
-        Paramaters
-        ----------
-        rate        : float : Rate (intensity) of the Poisson process.
-        rateInter   : float : Length  of time the rate is given in.
-        logNormMean : float : Mean of log(Jumps).
-        logNormDev  : float : Standard deviotion of log(Jumps).
-        mag         : float : Scale of stochastic process.
-
-        """
-        self.rate = rate
-        self.rateInter = rateInter
-        self.lam = rate / rateInter
-        
+    def __init__(self, lam, logNormMean=0, logNormDev=1,
+                 drift=0, mag=1, start=0, end=1):
+        self.lam = lam
         self.logNormMean = logNormMean
         self.logNormDev = logNormDev
+        self.drift = drift
         self.mag = mag
-        self.index = Index(0) if index is None else index
-
-
-    @property
-    def initDict(self):
-        """Dictionary of inputs to init to self."""
-        className = 'CompoundPoisson'
-        initOrder = ['rate', 'rateInter', 'logNormMean', 'logNormDev', 'mag']
-        repData = {
-            'rate'        : self.rate,
-            'rateInter'   : self.rateInter,
-            'logNormMean' : self.logNormMean,
-            'logNormDev'  : self.logNormDev,
-            'mag'         : self.mag}
-        
-        return className, repData, initOrder
+        self.index = [start, end]
 
     def __repr__(self):
         """Return repr(self)."""
-        className, repData, order = self.initDict
-        rep = ', '.join([f'{x}: {repData[x]}' for x in order])
+        repData1 = f'lam={self.lam}, logNormMean={self.logNormMean}, logNormDev={self.logNormDev}'
+        repData2 = f'drift={self.drift}, mag={self.mag}, index={repr(self.index)}'
         
-        return f'{className}({rep})'
+        return f'CompoundPoisson({repData1}, {repData2})'
 
-    def sample(self, sims, idx, scale=1):
+    def sample(self, sims, idx, shape=None):
         """Sample X_t.
 
         Paramaters
         ----------
         sims  : int   : # of simulations drawn at each point in time.
         idx   : float : Provides instance of SP being sampled.
-        scale : float : End scaling of samples.
 
         Returns
         -------
-        res : ndarray : Array with 'sims' number of samples. Shape = (sims,)
+        res : ndarray : Array with 'sims' number of samples.
         
         """
-        realizePoisson = np.random.poisson(self.lam*idx, sims)
-        realizeJumps = np.random.lognormal(self.logNormMean, self.logNormDev,
-                                           size=np.sum(realizePoisson))
-        res = np.ones(sims) * self.mag
-        idx = 0
-        for i, k in enumerate(realizePoisson):
-            res[k] *= np.sum(realizeJumps[idx: idx+k])
-            idx += k
+        if shape is None:
+            shape = sims
 
-        return scale*res
+        realizePoisson = np.random.poisson(lam=self.lam*idx, size=sims)
+        realizeJumps = np.random.lognormal(
+            mean=self.logNormMean,
+            sigma=self.logNormDev,
+            size=np.sum(realizePoisson)
+            )
         
-    def sampleIndex(self, sims, scale=1):
-        if self.index.continuous:
-            sampVals = np.linspace(self.index.start,
-                               min(max(100, self.index.start), self.index.end),
-                               100)
-            vals = [np.mean(self.sample(sims, x, scale)) for x in sampVals]
+        noise = np.zeros(sims)
+        prev = 0
+        for i, N_t in enumerate(realizePoisson):
+            noise[i] = np.sum(realizeJumps[prev:prev+N_t])
+            prev += N_t
 
-        else:
-            vals = [np.mean(self.sample(sims, x, scale)) for x in self.index.I]
+        noise = noise.reshape(shape)
+        struc = idx
+        return self.drift*struc + self.mag*noise
 
-        return vals
-            
-    def graph(self, sims, idx=None, scale=1):
-        if idx is None:
-            plt.plot(self.sampleIndex(sims, scale))
-        else:
-            plt.plot(self.sample(sims, idx, scale))
+    def graph(self, numPaths=1, steps=100):
+        """Plot multiple sample paths of the stochastic process."""
+        plt.figure(figsize=(10, 6))
+        indexSet = np.linspace(self.index[0], self.index[1], steps)
+        paths = np.zeros((numPaths, len(indexSet)))
+
+        # Generate samples for each time point
+        for i, t in enumerate(indexSet):
+            samples = self.sample(sims=numPaths, idx=t)
+            paths[:, i] = samples
+        
+        # Plot each path
+        for pathidx in range(numPaths):
+            plt.plot(indexSet, paths[pathidx, :],
+                     label=f"Sample Path {pathidx + 1}")
+        
+        # Add labels and legend
+        plt.title(f"Sample Paths of {self.__class__.__name__}")
+        plt.xlabel("Index (t)")
+        plt.ylabel("Value")
+        plt.legend()
+        plt.grid()
         plt.show()
+
+if __name__ == "__main__":
+    J = CompoundPoisson(drift=1, mag=2, lam=.5)
+    J.graph(numPaths=5)
